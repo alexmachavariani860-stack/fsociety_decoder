@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: fsociety-chat
+    runtime: node
+    plan: free
+    buildCommand: npm ci
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: HOST
+        value: 0.0.0.0
+      - key: JWT_SECRET
+        generateValue: true
+      - key: AUTH_CODE
+        value: FSOCIETY_AUTH
+      - key: CORS_ORIGIN
+        sync: false

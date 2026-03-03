@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Fsociety_decoder Authorization</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <main class="page">
+    <section class="panel">
+      <h1>Fsociety_decoder</h1>
+      <p>Authorize first, then log in. Use: FSOCIETY_AUTH or Fsociety_decoder</p>
+      <form id="authorizeForm">
+        <label for="code">Authorization Code</label>
+        <input id="code" type="password" placeholder="Enter authorization code" />
+        <button id="authorizeBtn" type="submit">Authorize</button>
+      </form>
+      <p id="error" class="error"></p>
+    </section>
+  </main>
+  <script src="/index.js"></script>
+</body>
+</html>
