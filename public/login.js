@@ -30,7 +30,12 @@ async function submitAuth(path) {
       body: JSON.stringify({ username, password }),
     });
 
-    const result = await response.json();
+    let result;
+    try {
+      result = await response.json();
+    } catch {
+      result = { error: "Unexpected server response." };
+    }
 
     if (!response.ok) {
       statusEl.textContent = result.error || "Request failed.";

@@ -18,8 +18,9 @@ const CORS_ORIGIN = process.env.CORS_ORIGIN || "";
 const JWT_SECRET = process.env.JWT_SECRET || "dev_secret_change_me";
 const AUTH_CODE = process.env.AUTH_CODE || "FSOCIETY_AUTH";
 const AUTH_ALIASES = ["Fsociety_decoder"];
-const USERS_FILE = path.join(__dirname, "data", "users.json");
-const MESSAGES_FILE = path.join(__dirname, "data", "messages.json");
+const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, "data");
+const USERS_FILE = path.join(DATA_DIR, "users.json");
+const MESSAGES_FILE = path.join(DATA_DIR, "messages.json");
 
 const io = new Server(
   server,
@@ -36,13 +37,22 @@ const io = new Server(
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
 
+function ensureDataFiles() {
+  if (!fs.existsSync(DATA_DIR)) {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+  }
+
+  if (!fs.existsSync(USERS_FILE)) {
+    fs.writeFileSync(USERS_FILE, "[]\n");
+  }
+
+  if (!fs.existsSync(MESSAGES_FILE)) {
+    fs.writeFileSync(MESSAGES_FILE, "[]\n");
+  }
+}
+
 function readJson(filePath, fallbackValue) {
   try {
-    if (!fs.existsSync(filePath)) {
-      fs.writeFileSync(filePath, JSON.stringify(fallbackValue, null, 2));
-      return fallbackValue;
-    }
-
     const content = fs.readFileSync(filePath, "utf8");
     return content.trim() ? JSON.parse(content) : fallbackValue;
   } catch {
@@ -121,71 +131,79 @@ app.post("/api/authorize", (req, res) => {
 });
 
 app.post("/api/register", verifyAuthPhaseToken, async (req, res) => {
-  const username = normalizeUsername(req.body?.username);
-  const password = String(req.body?.password || "");
+  try {
+    const username = normalizeUsername(req.body?.username);
+    const password = String(req.body?.password || "");
 
-  if (username.length < 3) {
-    return res.status(400).json({ error: "Username must be at least 3 characters." });
+    if (username.length < 3) {
+      return res.status(400).json({ error: "Username must be at least 3 characters." });
+    }
+
+    if (password.length < 6) {
+      return res.status(400).json({ error: "Password must be at least 6 characters." });
+    }
+
+    const users = getUsers();
+    const userExists = users.some(
+      (u) => u.username.toLowerCase() === username.toLowerCase()
+    );
+
+    if (userExists) {
+      return res.status(409).json({ error: "Username already exists." });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const user = {
+      id: Date.now().toString(36),
+      username,
+      passwordHash: hashedPassword,
+      createdAt: new Date().toISOString(),
+    };
+
+    users.push(user);
+    saveUsers(users);
+
+    return res.status(201).json({ success: true });
+  } catch {
+    return res.status(500).json({ error: "Server storage error. Try again." });
   }
-
-  if (password.length < 6) {
-    return res.status(400).json({ error: "Password must be at least 6 characters." });
-  }
-
-  const users = getUsers();
-  const userExists = users.some(
-    (u) => u.username.toLowerCase() === username.toLowerCase()
-  );
-
-  if (userExists) {
-    return res.status(409).json({ error: "Username already exists." });
-  }
-
-  const hashedPassword = await bcrypt.hash(password, 10);
-  const user = {
-    id: Date.now().toString(36),
-    username,
-    passwordHash: hashedPassword,
-    createdAt: new Date().toISOString(),
-  };
-
-  users.push(user);
-  saveUsers(users);
-
-  return res.status(201).json({ success: true });
 });
 
 app.post("/api/login", verifyAuthPhaseToken, async (req, res) => {
-  const username = normalizeUsername(req.body?.username);
-  const password = String(req.body?.password || "");
+  try {
+    const username = normalizeUsername(req.body?.username);
+    const password = String(req.body?.password || "");
 
-  const users = getUsers();
-  const user = users.find((u) => u.username.toLowerCase() === username.toLowerCase());
+    const users = getUsers();
+    const user = users.find((u) => u.username.toLowerCase() === username.toLowerCase());
 
-  if (!user) {
-    return res.status(401).json({ error: "Invalid username or password." });
+    if (!user) {
+      return res.status(401).json({ error: "Invalid username or password." });
+    }
+
+    const matches = await bcrypt.compare(password, user.passwordHash);
+    if (!matches) {
+      return res.status(401).json({ error: "Invalid username or password." });
+    }
+
+    return res.json({
+      success: true,
+      sessionToken: issueSessionToken(user),
+      username: user.username,
+    });
+  } catch {
+    return res.status(500).json({ error: "Server storage error. Try again." });
   }
-
-  const matches = await bcrypt.compare(password, user.passwordHash);
-  if (!matches) {
-    return res.status(401).json({ error: "Invalid username or password." });
-  }
-
-  return res.json({
-    success: true,
-    sessionToken: issueSessionToken(user),
-    username: user.username,
-  });
 });
 
 app.get("/api/messages", (req, res) => {
-  const token = req.header("authorization")?.replace("Bearer ", "");
-
-  if (!token) {
-    return res.status(401).json({ error: "Session token required." });
-  }
-
   try {
+    const token = req.header("authorization")?.replace("Bearer ", "");
+
+    if (!token) {
+      return res.status(401).json({ error: "Session token required." });
+    }
+
     const payload = jwt.verify(token, JWT_SECRET);
     if (payload.phase !== "session") {
       return res.status(401).json({ error: "Invalid session." });
@@ -223,23 +241,27 @@ io.use((socket, next) => {
 
 io.on("connection", (socket) => {
   socket.on("chat:send", (rawText) => {
-    const text = String(rawText || "").trim();
-    if (!text) {
-      return;
+    try {
+      const text = String(rawText || "").trim();
+      if (!text) {
+        return;
+      }
+
+      const message = {
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        username: socket.data.user.username,
+        text: text.slice(0, 600),
+        createdAt: new Date().toISOString(),
+      };
+
+      const messages = getMessages();
+      messages.push(message);
+      saveMessages(messages.slice(-300));
+
+      io.emit("chat:new", message);
+    } catch {
+      socket.emit("chat:error", "Unable to save message right now.");
     }
-
-    const message = {
-      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      username: socket.data.user.username,
-      text: text.slice(0, 600),
-      createdAt: new Date().toISOString(),
-    };
-
-    const messages = getMessages();
-    messages.push(message);
-    saveMessages(messages.slice(-300));
-
-    io.emit("chat:new", message);
   });
 });
 
@@ -247,7 +269,10 @@ app.get("*", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "index.html"));
 });
 
+ensureDataFiles();
+
 server.listen(PORT, HOST, () => {
   console.log(`Fsociety_decoder chat running on http://localhost:${PORT}`);
   console.log(`Network bind: ${HOST}:${PORT}`);
+  console.log(`Data dir: ${DATA_DIR}`);
 });

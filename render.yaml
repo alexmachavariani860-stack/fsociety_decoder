@@ -16,3 +16,5 @@ services:
         value: FSOCIETY_AUTH
       - key: CORS_ORIGIN
         sync: false
+      - key: DATA_DIR
+        value: /tmp/fsociety-chat-data
