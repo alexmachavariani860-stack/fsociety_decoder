@@ -1,8 +1,3 @@
-const authToken = localStorage.getItem("authorizationToken");
-if (!authToken) {
-  window.location.href = "/";
-}
-
 const usernameInput = document.getElementById("username");
 const passwordInput = document.getElementById("password");
 const statusEl = document.getElementById("status");
@@ -25,7 +20,6 @@ async function submitAuth(path) {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-authorization-token": authToken,
       },
       body: JSON.stringify({ username, password }),
     });

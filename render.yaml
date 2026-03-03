@@ -12,8 +12,6 @@ services:
         value: 0.0.0.0
       - key: JWT_SECRET
         generateValue: true
-      - key: AUTH_CODE
-        value: FSOCIETY_AUTH
       - key: CORS_ORIGIN
         sync: false
       - key: DATA_DIR

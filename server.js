@@ -16,8 +16,6 @@ const PORT = process.env.PORT || 3000;
 const HOST = process.env.HOST || "0.0.0.0";
 const CORS_ORIGIN = process.env.CORS_ORIGIN || "";
 const JWT_SECRET = process.env.JWT_SECRET || "dev_secret_change_me";
-const AUTH_CODE = process.env.AUTH_CODE || "FSOCIETY_AUTH";
-const AUTH_ALIASES = ["Fsociety_decoder"];
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, "data");
 const USERS_FILE = path.join(DATA_DIR, "users.json");
 const MESSAGES_FILE = path.join(DATA_DIR, "messages.json");
@@ -80,28 +78,6 @@ function saveMessages(messages) {
   writeJson(MESSAGES_FILE, messages);
 }
 
-function issueAuthToken() {
-  return jwt.sign({ phase: "authorized" }, JWT_SECRET, { expiresIn: "30m" });
-}
-
-function verifyAuthPhaseToken(req, res, next) {
-  const authToken = req.header("x-authorization-token");
-
-  if (!authToken) {
-    return res.status(401).json({ error: "Authorization required first." });
-  }
-
-  try {
-    const payload = jwt.verify(authToken, JWT_SECRET);
-    if (payload.phase !== "authorized") {
-      return res.status(401).json({ error: "Invalid authorization token." });
-    }
-    return next();
-  } catch {
-    return res.status(401).json({ error: "Authorization expired. Re-authorize." });
-  }
-}
-
 function issueSessionToken(user) {
   return jwt.sign(
     { userId: user.id, username: user.username, phase: "session" },
@@ -114,23 +90,7 @@ function normalizeUsername(username) {
   return String(username || "").trim();
 }
 
-app.post("/api/authorize", (req, res) => {
-  const code = String(req.body?.code || "").trim();
-  const normalized = code.toLowerCase();
-  const isMainCode = normalized === AUTH_CODE.toLowerCase();
-  const isAlias = AUTH_ALIASES.some((alias) => normalized === alias.toLowerCase());
-
-  if (!isMainCode && !isAlias) {
-    return res.status(401).json({ error: "Invalid authorization code." });
-  }
-
-  return res.json({
-    success: true,
-    authorizationToken: issueAuthToken(),
-  });
-});
-
-app.post("/api/register", verifyAuthPhaseToken, async (req, res) => {
+app.post("/api/register", async (req, res) => {
   try {
     const username = normalizeUsername(req.body?.username);
     const password = String(req.body?.password || "");
@@ -169,7 +129,7 @@ app.post("/api/register", verifyAuthPhaseToken, async (req, res) => {
   }
 });
 
-app.post("/api/login", verifyAuthPhaseToken, async (req, res) => {
+app.post("/api/login", async (req, res) => {
   try {
     const username = normalizeUsername(req.body?.username);
     const password = String(req.body?.password || "");
